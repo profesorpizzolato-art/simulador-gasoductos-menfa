@@ -254,42 +254,70 @@ elif "5. Examen" in modulo:
     if not preguntas_db:
         st.warning("⚠️ No se encontró la base de datos `data/preguntas.json` o está vacía.")
     else:
-        respuestas_usuario = {}
-        with st.form("form_examen"):
-            for idx, q in enumerate(preguntas_db):
-                st.markdown(f"**Pregunta {idx+1}:** {q.get('pregunta', '')}")
-                if q.get('modulo'):
-                    st.caption(f"Categoría: {q.get('modulo')} | Nivel: {q.get('nivel', 'N/A')}")
-                
-                respuestas_usuario[idx] = st.radio(
-                    "Selecciona una opción:",
-                    q.get("opciones", []),
-                    key=f"q_{idx}"
-                )
-                st.divider()
-            
-            submit = st.form_submit_button("Enviar Respuestas")
+        # 1. Extracción de niveles disponibles
+        niveles_disponibles = sorted(list({q.get("nivel", "Todos") for q in preguntas_db if q.get("nivel")}))
         
-        if submit:
-            correctas = 0
-            for idx, q in enumerate(preguntas_db):
-                resp_usr = respuestas_usuario[idx]
-                resp_cor = q.get("respuesta_correcta")
+        # 2. Controles de Filtrado Dinámico
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            nivel_seleccionado = st.multiselect(
+                "Filtrar por Perfil / Nivel Técnico:",
+                options=niveles_disponibles,
+                default=niveles_disponibles,
+                help="Selecciona uno o más niveles para personalizar tu examen."
+            )
+        
+        # 3. Aplicar filtro
+        if nivel_seleccionado:
+            preguntas_filtradas = [q for q in preguntas_db if q.get("nivel") in nivel_seleccionado]
+        else:
+            preguntas_filtradas = preguntas_db
+
+        with col_f2:
+            st.metric("Total de Preguntas en Examen", len(preguntas_filtradas))
+
+        st.divider()
+
+        if not preguntas_filtradas:
+            st.info("No hay preguntas disponibles para el filtro de nivel seleccionado.")
+        else:
+            respuestas_usuario = {}
+            with st.form("form_examen_filtrado"):
+                for idx, q in enumerate(preguntas_filtradas):
+                    st.markdown(f"**Pregunta {idx+1}:** {q.get('pregunta', '')}")
+                    st.caption(f"📌 Módulo: **{q.get('modulo', 'General')}** | Nivel: **{q.get('nivel', 'N/A')}**")
+                    
+                    respuestas_usuario[idx] = st.radio(
+                        "Selecciona una opción:",
+                        q.get("opciones", []),
+                        key=f"q_filt_{q.get('id', idx)}"
+                    )
+                    st.divider()
                 
-                if resp_usr == resp_cor:
-                    correctas += 1
-                    st.success(f"**P{idx+1} Correcta:** {q.get('explicacion', '')}")
+                submit = st.form_submit_button("Enviar Respuestas")
+            
+            if submit:
+                correctas = 0
+                for idx, q in enumerate(preguntas_filtradas):
+                    resp_usr = respuestas_usuario[idx]
+                    resp_cor = q.get("respuesta_correcta")
+                    
+                    if resp_usr == resp_cor:
+                        correctas += 1
+                        st.success(f"**P{idx+1} Correcta:** {q.get('explicacion', '')}")
+                    else:
+                        st.error(f"**P{idx+1} Incorrecta:** Seleccionaste '{resp_usr}'. La respuesta correcta es '{resp_cor}'.")
+                        if q.get('explicacion'):
+                            st.info(f"💡 *Fundamento:* {q.get('explicacion')}")
+                
+                total_q = len(preguntas_filtradas)
+                score = (correctas / total_q) * 100 if total_q > 0 else 0
+                
+                st.divider()
+                st.metric("Puntaje Obtenido", f"{score:.0f} / 100", f"{correctas} de {total_q} correctas")
+                
+                if score >= 70:
+                    st.balloons()
+                    st.success("¡Aprobado! Cumple con el estándar de capacitación técnica MENFA.")
                 else:
-                    st.error(f"**P{idx+1} Incorrecta:** Seleccionaste '{resp_usr}'. La respuesta correcta es '{resp_cor}'.")
-                    if q.get('explicacion'):
-                        st.info(f"💡 *Fundamento:* {q.get('explicacion')}")
-            
-            score = (correctas / len(preguntas_db)) * 100
-            st.divider()
-            st.metric("Puntaje Obtenido", f"{score:.0f} / 100")
-            
-            if score >= 70:
-                st.balloons()
-                st.success("¡Aprobado! Cumple con el estándar de capacitación técnica MENFA.")
-            else:
-                st.error("No alcanzado. Se requiere un mínimo de 70% para aprobar.")
+                    st.error("No alcanzado. Se requiere un mínimo de 70% para aprobar.")
