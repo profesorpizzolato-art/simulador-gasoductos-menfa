@@ -266,85 +266,185 @@ elif "4. Verificación" in modulo:
         else:
             st.error(f"❌ No Conforme: Se requieren al menos {tapada_min:.2f} m de tapada.")
 
+import io
+import math
+import streamlit as st
+import plotly.graph_objects as go
+
+# Dependencias para la generación del reporte PDF
+from reportlab.lib.pagesizes import letter
+from reportlab.lib import colors
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
 # ---------------------------------------------------------
-# MÓDULO 5: EXAMEN DE EVALUACIÓN
+# FUNCIÓN GENERADORA DEL REPORTE PDF (ASME B31G)
 # ---------------------------------------------------------
-elif "5. Examen" in modulo:
-    st.subheader("📝 Módulo de Evaluación Técnica")
+def generar_pdf_asme_b31g(datos_ducto, resultados, postulante=""):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=letter,
+        rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36
+    )
     
-    if not preguntas_db:
-        st.warning("⚠️ No se encontró la base de datos `data/preguntas.json` o está vacía.")
+    styles = getSampleStyleSheet()
+    
+    # Estilos personalizados
+    style_title = ParagraphStyle(
+        'DocTitle', parent=styles['Heading1'],
+        fontSize=18, leading=22, textColor=colors.HexColor("#1E3A8A"), alignment=1
+    )
+    style_subtitle = ParagraphStyle(
+        'DocSubTitle', parent=styles['Normal'],
+        fontSize=10, leading=12, textColor=colors.HexColor("#4B5563"), alignment=1
+    )
+    style_h2 = ParagraphStyle(
+        'Heading2', parent=styles['Heading2'],
+        fontSize=12, leading=15, textColor=colors.HexColor("#1E3A8A"), spaceBefore=10, spaceAfter=5
+    )
+    style_body = ParagraphStyle(
+        'Body', parent=styles['Normal'], fontSize=9, leading=12, textColor=colors.HexColor("#1F2937")
+    )
+    style_bold = ParagraphStyle(
+        'BoldBody', parent=style_body, fontName="Helvetica-Bold"
+    )
+
+    elements = []
+
+    # 1. Encabezado institucional
+    elements.append(Paragraph("<b>INSTITUTO MENFA - CAPACITACIÓN & INTEGRIDAD</b>", style_title))
+    elements.append(Paragraph("Informe Técnico de Evaluación de Aptitud para el Servicio (Fitness-for-Service)", style_subtitle))
+    elements.append(Paragraph("Evaluación de Pérdida de Metal por Corrosión según ASME B31G", style_subtitle))
+    elements.append(Spacer(1, 10))
+    elements.append(HRFlowable(width="100%", thickness=1.5, color=colors.HexColor("#1E3A8A"), spaceAfter=15))
+
+    # 2. Información General / Inspector
+    if postulante:
+        data_inspector = [
+            [Paragraph("<b>Inspector / Evaluador:</b>", style_body), Paragraph(postulante, style_body),
+             Paragraph("<b>Norma Evaluativa:</b>", style_body), Paragraph("ASME B31G (Original)", style_body)]
+        ]
+        t_insp = Table(data_inspector, colWidths=[120, 150, 110, 140])
+        t_insp.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,-1), colors.HexColor("#F3F4F6")),
+            ('PADDING', (0,0), (-1,-1), 6),
+            ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ]))
+        elements.append(t_insp)
+        elements.append(Spacer(1, 12))
+
+    # 3. Datos de la Cañería y Defecto
+    elements.append(Paragraph("1. Parámetros de Entrada (Ducto y Anomalía)", style_h2))
+    
+    table_data = [
+        [Paragraph("<b>Parámetro</b>", style_bold), Paragraph("<b>Valor</b>", style_bold), Paragraph("<b>Unidad</b>", style_bold)],
+        [Paragraph("Presión Máx. Operativa (MAOP)", style_body), Paragraph(f"{datos_ducto['maop']:.2f}", style_body), Paragraph("bar", style_body)],
+        [Paragraph("Diámetro Exterior ($D$)", style_body), Paragraph(f"{datos_ducto['d_ext']:.1f}", style_body), Paragraph("mm", style_body)],
+        [Paragraph("Espesor Nominal ($t$)", style_body), Paragraph(f"{datos_ducto['espesor']:.2f}", style_body), Paragraph("mm", style_body)],
+        [Paragraph("Profundidad de Defecto ($d$)", style_body), Paragraph(f"{datos_ducto['profundidad']:.2f}", style_body), Paragraph("mm", style_body)],
+        [Paragraph("Longitud Axial Defecto ($L$)", style_body), Paragraph(f"{datos_ducto['longitud']:.1f}", style_body), Paragraph("mm", style_body)],
+    ]
+
+    t_params = Table(table_data, colWidths=[240, 140, 140])
+    t_params.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#E5E7EB")),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
+        ('PADDING', (0,0), (-1,-1), 5),
+    ]))
+    elements.append(t_params)
+    elements.append(Spacer(1, 12))
+
+    # 4. Resultados de Cálculo
+    elements.append(Paragraph("2. Resultados del Análisis Dimensional y Presión Remanente", style_h2))
+    
+    color_dictamen = colors.HexColor("#DCFCE7") if resultados["estado"] == "ACEPTABLE" else (colors.HexColor("#FEF3C7") if resultados["estado"] == "RELIQUIDEZ / DERATING" else colors.HexColor("#FEE2E2"))
+
+    res_data = [
+        [Paragraph("<b>Severidad / Profundidad (%t):</b>", style_body), Paragraph(f"{resultados['pct_prof']}%", style_bold)],
+        [Paragraph("<b>Factor Geométrico (A):</b>", style_body), Paragraph(f"{resultados['A_factor']:.3f}", style_body)],
+        [Paragraph("<b>Presión Remanente Segura ($P_{safe}$):</b>", style_body), Paragraph(f"<b>{resultados['p_safe_bar']:.2f} bar</b>", style_bold)],
+        [Paragraph("<b>Dictamen Técnico Final:</b>", style_body), Paragraph(f"<b>{resultados['estado']}</b>", style_bold)]
+    ]
+
+    t_res = Table(res_data, colWidths=[200, 320])
+    t_res.setStyle(TableStyle([
+        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#D1D5DB")),
+        ('BACKGROUND', (0,3), (-1,3), color_dictamen),
+        ('PADDING', (0,0), (-1,-1), 6),
+    ]))
+    elements.append(t_res)
+    elements.append(Spacer(1, 12))
+
+    # 5. Dictamen y Recomendaciones
+    elements.append(Paragraph("3. Conclusión Técnica", style_h2))
+    elements.append(Paragraph(f"<b>Fundamento:</b> {resultados['motivo']}", style_body))
+    elements.append(Spacer(1, 20))
+
+    # Pie institucional
+    elements.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor("#9CA3AF"), spaceAfter=8))
+    elements.append(Paragraph("Documento generado automáticamente por la Plataforma de Integridad MENFA - Norma ASME B31G.", style_subtitle))
+
+    doc.build(elements)
+    buffer.seek(0)
+    return buffer
+
+# ---------------------------------------------------------
+# INTERFAZ DE STREAMLIT (INTEGRACIÓN EN EL MÓDULO 5)
+# ---------------------------------------------------------
+if "5. Evaluación Corrosión" in modulo:
+    st.subheader("🔬 Evaluación de Pérdida de Metal por Corrosión (ASME B31G)")
+    
+    with st.expander("👤 Registro del Inspector / Evaluador", expanded=False):
+        nombre_inspector = st.text_input("Nombre y Apellido del Inspector:", placeholder="Ej: Ing. Fabricio Pizzolato")
+
+    col_b1, col_b2 = st.columns(2)
+    with col_b1:
+        st.markdown("**Parámetros de la Cañería**")
+        maop_b31g = st.number_input("MAOP Operativa (bar)", value=60.0, step=1.0)
+        dn_b31g = st.selectbox("Diámetro Nominal (pulgadas)", [4, 6, 8, 10, 12, 16, 20, 24, 30], index=4)
+        d_ext_b31g = dn_b31g * 25.4
+        t_nom_b31g = st.number_input("Espesor Nominal del Tubo (mm)", value=7.11, min_value=1.0, step=0.1)
+
+    with col_b2:
+        st.markdown("**Dimensiones de la Pérdida de Metal (Picadura)**")
+        d_defecto = st.number_input("Profundidad Máxima de Corrosión d (mm)", value=2.50, min_value=0.1, max_value=t_nom_b31g, step=0.1)
+        l_defecto = st.number_input("Longitud Axial del Defecto L (mm)", value=120.0, min_value=1.0, step=5.0)
+
+    # Función de cálculo ASME B31G previamente definida
+    res_b31g = evaluar_asme_b31g(maop_b31g, d_ext_b31g, t_nom_b31g, d_defecto, l_defecto)
+
+    st.divider()
+    
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Profundidad del Defecto", f"{res_b31g['pct_prof']}% t")
+    m2.metric("Factor Geométrico A", f"{res_b31g['A_factor']}")
+    m3.metric("MAOP Actual", f"{maop_b31g:.2f} bar")
+    m4.metric("Presión Remanente (P_safe)", f"{res_b31g['p_safe_bar']:.2f} bar")
+
+    # Muestreo de Estado
+    if res_b31g["estado"] == "ACEPTABLE":
+        st.success(f"✅ **Dictamen:** {res_b31g['motivo']}")
+    elif res_b31g["estado"] == "RELIQUIDEZ / DERATING":
+        st.warning(f"⚠️ **Dictamen:** {res_b31g['motivo']}")
     else:
-        # Datos del Estudiante / Inspector
-        with st.expander("👤 Datos del Postulante", expanded=True):
-            col_u1, col_u2 = st.columns(2)
-            nombre_usr = col_u1.text_input("Nombre Completo:", placeholder="Ej: Juan Pérez")
-            dni_usr = col_u2.text_input("DNI / Legajo:", placeholder="Ej: 35123456")
+        st.error(f"❌ **Dictamen:** {res_b31g['motivo']}")
 
-        niveles_disponibles = sorted(list({q.get("nivel", "Todos") for q in preguntas_db if q.get("nivel")}))
-        
-        col_f1, col_f2 = st.columns(2)
-        with col_f1:
-            nivel_seleccionado = st.multiselect(
-                "Filtrar por Perfil / Nivel Técnico:",
-                options=niveles_disponibles,
-                default=niveles_disponibles,
-                help="Selecciona uno o más niveles para personalizar tu examen."
-            )
-        
-        if nivel_seleccionado:
-            preguntas_filtradas = [q for q in preguntas_db if q.get("nivel") in nivel_seleccionado]
-        else:
-            preguntas_filtradas = preguntas_db
+    # Botón de Descarga del PDF Report
+    dict_datos = {
+        "maop": maop_b31g,
+        "d_ext": d_ext_b31g,
+        "espesor": t_nom_b31g,
+        "profundidad": d_defecto,
+        "longitud": l_defecto
+    }
+    
+    pdf_bytes = generar_pdf_asme_b31g(dict_datos, res_b31g, nombre_inspector)
 
-        with col_f2:
-            st.metric("Total de Preguntas en Examen", len(preguntas_filtradas))
-
-        st.divider()
-
-        if not preguntas_filtradas:
-            st.info("No hay preguntas disponibles para el filtro de nivel seleccionado.")
-        else:
-            respuestas_usuario = {}
-            with st.form("form_examen_filtrado"):
-                for idx, q in enumerate(preguntas_filtradas):
-                    st.markdown(f"**Pregunta {idx+1}:** {q.get('pregunta', '')}")
-                    st.caption(f"📌 Módulo: **{q.get('modulo', 'General')}** | Nivel: **{q.get('nivel', 'N/A')}**")
-                    
-                    respuestas_usuario[idx] = st.radio(
-                        "Selecciona una opción:",
-                        q.get("opciones", []),
-                        key=f"q_filt_{q.get('id', idx)}"
-                    )
-                    st.divider()
-                
-                submit = st.form_submit_button("Enviar Respuestas")
-            
-            if submit:
-                if not nombre_usr or not dni_usr:
-                    st.warning("⚠️ Por favor ingrese su Nombre y DNI/Legajo antes de enviar la evaluación.")
-                else:
-                    correctas = 0
-                    for idx, q in enumerate(preguntas_filtradas):
-                        resp_usr = respuestas_usuario[idx]
-                        resp_cor = q.get("respuesta_correcta")
-                        
-                        if resp_usr == resp_cor:
-                            correctas += 1
-                            st.success(f"**P{idx+1} Correcta:** {q.get('explicacion', '')}")
-                        else:
-                            st.error(f"**P{idx+1} Incorrecta:** Seleccionaste '{resp_usr}'. La respuesta correcta es '{resp_cor}'.")
-                            if q.get('explicacion'):
-                                st.info(f"💡 *Fundamento:* {q.get('explicacion')}")
-                    
-                    total_q = len(preguntas_filtradas)
-                    score = (correctas / total_q) * 100 if total_q > 0 else 0
-                    
-                    st.divider()
-                    st.metric("Puntaje Obtenido", f"{score:.0f} / 100", f"{correctas} de {total_q} correctas")
-                    
-                    if score >= 70:
-                        st.balloons()
-                        st.success(f"¡Aprobado! Postulante **{nombre_usr}** (DNI: {dni_usr}) cumple con el estándar de capacitación técnica MENFA.")
-                    else:
-                        st.error(f"No alcanzado. **{nombre_usr}**, se requiere un mínimo de 70% para aprobar.")
+    st.download_button(
+        label="📄 Descargar Informe Técnico en PDF",
+        data=pdf_bytes,
+        file_name=f"Informe_ASME_B31G_DN{dn_b31g}.pdf",
+        mime="application/pdf",
+        use_container_width=True
+    )
