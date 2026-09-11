@@ -2,7 +2,7 @@ import json
 import streamlit as st
 import plotly.graph_objects as go
 
-# Configuración de página (SIEMPRE debe ser la primera llamada de Streamlit)
+# Configuración de página (SIEMPRE la primera llamada de Streamlit)
 st.set_page_config(
     page_title="Simulador MENFA | Gasoductos NAG-100",
     page_icon="⚡",
@@ -10,18 +10,42 @@ st.set_page_config(
 )
 
 # ---------------------------------------------------------
-# CARGA DE DATOS SECUNDARIOS (CACHEADA)
+# CARGA Y NORMALIZACIÓN DE DATOS SECUNDARIOS
 # ---------------------------------------------------------
 @st.cache_data
 def cargar_datos_normativos():
+    preguntas_planas = []
+    escenarios = []
+    
+    # 1. Carga y aplanado de Preguntas
     try:
-        with open("data/preguntas.json", "r", encoding="utf-8") as f_preguntas:
-            preguntas = json.load(f_preguntas)
-        with open("data/escenarios.json", "r", encoding="utf-8") as f_escenarios:
-            escenarios = json.load(f_escenarios)
-        return preguntas, escenarios
-    except FileNotFoundError:
-        return [], []
+        with open("data/preguntas.json", "r", encoding="utf-8") as f_preg:
+            data_preg = json.load(f_preg)
+            if isinstance(data_preg, dict):
+                for modulo_nombre, lista_q in data_preg.items():
+                    for q in lista_q:
+                        preguntas_planas.append({
+                            "id": str(q.get("id", "")).strip(),
+                            "modulo": modulo_nombre.replace("_", " ").title(),
+                            "nivel": str(q.get("nivel", "")).strip(),
+                            "pregunta": str(q.get("pregunta", "")).strip(),
+                            "opciones": [str(opt).strip() for opt in q.get("opciones", [])],
+                            "respuesta_correcta": str(q.get("respuesta_correcta", "")).strip().replace(",", "."),
+                            "explicacion": str(q.get("explicacion", "")).strip()
+                        })
+            elif isinstance(data_preg, list):
+                preguntas_planas = data_preg
+    except Exception:
+        preguntas_planas = []
+
+    # 2. Carga de Escenarios
+    try:
+        with open("data/escenarios.json", "r", encoding="utf-8") as f_esc:
+            escenarios = json.load(f_esc)
+    except Exception:
+        escenarios = []
+
+    return preguntas_planas, escenarios
 
 preguntas_db, escenarios_db = cargar_datos_normativos()
 
@@ -37,10 +61,6 @@ def calcular_espesor_nag100(p_diseno_bar, d_ext_mm, smys_mpa, factor_f, factor_e
     return round(t_requerido_mm, 2)
 
 def determinar_clase_trazado(viviendas_zona_influencia, es_edificio_alto=False):
-    """
-    Determina la clase de trazado según NAG-100 Sección 111.
-    Clase 4 aplica cuando predominan edificios de 4 o más pisos.
-    """
     if es_edificio_alto:
         return 4, 0.40
     elif viviendas_zona_influencia <= 10:
@@ -68,7 +88,7 @@ def verificar_tension_hoop(p_prueba_bar, d_ext_mm, espesor_mm, smys_mpa):
     return round(tension_mpa, 2), round(pct_smys, 1)
 
 # ---------------------------------------------------------
-# INTERFAZ PRINCIPAL
+# INTERFAZ PRINCIPAL Y NAVEGACIÓN
 # ---------------------------------------------------------
 st.title("⚡ Simulador de Aplicación Normativa: NAG-100 & NAG-124")
 st.caption("MENFA - Capacitación Técnica e Inspección de Gasoductos")
@@ -76,11 +96,17 @@ st.caption("MENFA - Capacitación Técnica e Inspección de Gasoductos")
 st.sidebar.title("Menú Principal")
 modulo = st.sidebar.selectbox(
     "Seleccionar Módulo",
-    ["1. Cálculo de Diseño (NAG-100)", "2. Pruebas Hidrostáticas (NAG-124)", "3. Inspección de Campo"]
+    [
+        "1. Cálculo de Diseño (NAG-100)",
+        "2. Pruebas Hidrostáticas (NAG-124)",
+        "3. Inspección de Campo",
+        "4. Verificación de Tapadas (NAG-100)",
+        "5. Examen de Evaluación"
+    ]
 )
 
 # ---------------------------------------------------------
-# MÓDULO 1: DISEÑO Y ESPESOR
+# MÓDULO 1: CÁLCULO DE DISEÑO
 # ---------------------------------------------------------
 if "1. Cálculo" in modulo:
     st.subheader("📐 Cálculo de Espesor Mínimo (Ecuación de Barlow / NAG-100)")
@@ -116,7 +142,6 @@ if "1. Cálculo" in modulo:
     m2.metric("Espesor Mínimo NAG-100", f"{espesor_req} mm")
     m3.metric("Tensión Admisible (S x F)", f"{smys_val * factor_f:.1f} MPa")
 
-    # Gráfico Gauge
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
         value=tension_calculada,
@@ -203,7 +228,6 @@ elif "4. Verificación" in modulo:
         clase_sel = st.selectbox("Clase de Trazado", [1, 2, 3, 4], index=2)
     
     with col_t2:
-        # Criterio normativo
         if tipo_ubicacion == "Ubicación Normal (Tierra)":
             tapada_min = 0.60 if clase_sel == 1 else 0.80
         elif tipo_ubicacion == "Roca Consolidada":
@@ -228,12 +252,15 @@ elif "5. Examen" in modulo:
     st.subheader("📝 Módulo de Evaluación Técnica")
     
     if not preguntas_db:
-        st.warning("⚠️ No se encontró la base de datos `data/preguntas.json`. Agrega el archivo para habilitar los cuestionarios.")
+        st.warning("⚠️ No se encontró la base de datos `data/preguntas.json` o está vacía.")
     else:
         respuestas_usuario = {}
         with st.form("form_examen"):
             for idx, q in enumerate(preguntas_db):
-                st.write(f"**Pregunta {idx+1}:** {q.get('pregunta', '')}")
+                st.markdown(f"**Pregunta {idx+1}:** {q.get('pregunta', '')}")
+                if q.get('modulo'):
+                    st.caption(f"Categoría: {q.get('modulo')} | Nivel: {q.get('nivel', 'N/A')}")
+                
                 respuestas_usuario[idx] = st.radio(
                     "Selecciona una opción:",
                     q.get("opciones", []),
@@ -246,11 +273,21 @@ elif "5. Examen" in modulo:
         if submit:
             correctas = 0
             for idx, q in enumerate(preguntas_db):
-                if respuestas_usuario[idx] == q.get("respuesta_correcta"):
+                resp_usr = respuestas_usuario[idx]
+                resp_cor = q.get("respuesta_correcta")
+                
+                if resp_usr == resp_cor:
                     correctas += 1
+                    st.success(f"**P{idx+1} Correcta:** {q.get('explicacion', '')}")
+                else:
+                    st.error(f"**P{idx+1} Incorrecta:** Seleccionaste '{resp_usr}'. La respuesta correcta es '{resp_cor}'.")
+                    if q.get('explicacion'):
+                        st.info(f"💡 *Fundamento:* {q.get('explicacion')}")
             
             score = (correctas / len(preguntas_db)) * 100
+            st.divider()
             st.metric("Puntaje Obtenido", f"{score:.0f} / 100")
+            
             if score >= 70:
                 st.balloons()
                 st.success("¡Aprobado! Cumple con el estándar de capacitación técnica MENFA.")
