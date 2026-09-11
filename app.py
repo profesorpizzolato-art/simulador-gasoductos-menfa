@@ -2,12 +2,26 @@ import json
 import streamlit as st
 import plotly.graph_objects as go
 
-# Configuración de página (SIEMPRE la primera llamada de Streamlit)
+# Configuración de página
 st.set_page_config(
     page_title="Simulador MENFA | Gasoductos NAG-100",
     page_icon="⚡",
     layout="wide"
 )
+
+# ---------------------------------------------------------
+# TABLAS NORMATIVAS Y COMERCIALES (API 5L)
+# ---------------------------------------------------------
+ESPESORES_COMERCIALES_MM = [
+    3.18, 4.78, 5.56, 6.35, 7.14, 7.92, 8.74, 9.53, 10.31, 
+    11.13, 12.70, 14.27, 15.88, 17.48, 19.05, 20.62, 22.23
+]
+
+def obtener_espesor_comercial(t_req):
+    for t_com in ESPESORES_COMERCIALES_MM:
+        if t_com >= t_req:
+            return t_com
+    return ESPESORES_COMERCIALES_MM[-1]
 
 # ---------------------------------------------------------
 # CARGA Y NORMALIZACIÓN DE DATOS SECUNDARIOS
@@ -17,7 +31,7 @@ def cargar_datos_normativos():
     preguntas_planas = []
     escenarios = []
     
-    # 1. Carga y aplanado de Preguntas
+    # 1. Carga de Preguntas
     try:
         with open("data/preguntas.json", "r", encoding="utf-8") as f_preg:
             data_preg = json.load(f_preg)
@@ -35,8 +49,12 @@ def cargar_datos_normativos():
                         })
             elif isinstance(data_preg, list):
                 preguntas_planas = data_preg
-    except Exception:
-        preguntas_planas = []
+    except FileNotFoundError:
+        st.warning("⚠️ Archivo `data/preguntas.json` no localizado. Verifique el directorio del proyecto.")
+    except json.JSONDecodeError as e:
+        st.error(f"❌ Error de formato JSON en preguntas: {e}")
+    except Exception as e:
+        st.error(f"❌ Error inesperado al cargar preguntas: {e}")
 
     # 2. Carga de Escenarios
     try:
@@ -134,13 +152,15 @@ if "1. Cálculo" in modulo:
         factor_t = st.selectbox("Factor de Temperatura T", [1.00, 0.937, 0.867], index=0, help="1.00 para T < 120 °C")
 
     espesor_req = calcular_espesor_nag100(presion_bar, d_ext_mm, smys_val, factor_f, factor_e, factor_t)
+    espesor_com = obtener_espesor_comercial(espesor_req)
     tension_calculada = (presion_bar / 10.0 * d_ext_mm) / (2 * espesor_req) if espesor_req > 0 else 0.0
     
     st.divider()
-    m1, m2, m3 = st.columns(3)
+    m1, m2, m3, m4 = st.columns(4)
     m1.metric("Diámetro Exterior", f"{d_ext_mm:.1f} mm")
-    m2.metric("Espesor Mínimo NAG-100", f"{espesor_req} mm")
-    m3.metric("Tensión Admisible (S x F)", f"{smys_val * factor_f:.1f} MPa")
+    m2.metric("Espesor Mínimo Calculado", f"{espesor_req} mm")
+    m3.metric("Espesor Comercial Recom.", f"{espesor_com} mm", f"+{round(espesor_com - espesor_req, 2)} mm")
+    m4.metric("Tensión Admisible (S x F)", f"{smys_val * factor_f:.1f} MPa")
 
     fig = go.Figure(go.Indicator(
         mode="gauge+number",
@@ -156,6 +176,7 @@ if "1. Cálculo" in modulo:
             'threshold': {'line': {'color': "red", 'width': 4}, 'value': smys_val * factor_f}
         }
     ))
+    fig.update_layout(margin=dict(l=30, r=30, t=50, b=20), height=320)
     st.plotly_chart(fig, use_container_width=True)
 
 # ---------------------------------------------------------
@@ -254,10 +275,14 @@ elif "5. Examen" in modulo:
     if not preguntas_db:
         st.warning("⚠️ No se encontró la base de datos `data/preguntas.json` o está vacía.")
     else:
-        # 1. Extracción de niveles disponibles
+        # Datos del Estudiante / Inspector
+        with st.expander("👤 Datos del Postulante", expanded=True):
+            col_u1, col_u2 = st.columns(2)
+            nombre_usr = col_u1.text_input("Nombre Completo:", placeholder="Ej: Juan Pérez")
+            dni_usr = col_u2.text_input("DNI / Legajo:", placeholder="Ej: 35123456")
+
         niveles_disponibles = sorted(list({q.get("nivel", "Todos") for q in preguntas_db if q.get("nivel")}))
         
-        # 2. Controles de Filtrado Dinámico
         col_f1, col_f2 = st.columns(2)
         with col_f1:
             nivel_seleccionado = st.multiselect(
@@ -267,7 +292,6 @@ elif "5. Examen" in modulo:
                 help="Selecciona uno o más niveles para personalizar tu examen."
             )
         
-        # 3. Aplicar filtro
         if nivel_seleccionado:
             preguntas_filtradas = [q for q in preguntas_db if q.get("nivel") in nivel_seleccionado]
         else:
@@ -297,27 +321,30 @@ elif "5. Examen" in modulo:
                 submit = st.form_submit_button("Enviar Respuestas")
             
             if submit:
-                correctas = 0
-                for idx, q in enumerate(preguntas_filtradas):
-                    resp_usr = respuestas_usuario[idx]
-                    resp_cor = q.get("respuesta_correcta")
-                    
-                    if resp_usr == resp_cor:
-                        correctas += 1
-                        st.success(f"**P{idx+1} Correcta:** {q.get('explicacion', '')}")
-                    else:
-                        st.error(f"**P{idx+1} Incorrecta:** Seleccionaste '{resp_usr}'. La respuesta correcta es '{resp_cor}'.")
-                        if q.get('explicacion'):
-                            st.info(f"💡 *Fundamento:* {q.get('explicacion')}")
-                
-                total_q = len(preguntas_filtradas)
-                score = (correctas / total_q) * 100 if total_q > 0 else 0
-                
-                st.divider()
-                st.metric("Puntaje Obtenido", f"{score:.0f} / 100", f"{correctas} de {total_q} correctas")
-                
-                if score >= 70:
-                    st.balloons()
-                    st.success("¡Aprobado! Cumple con el estándar de capacitación técnica MENFA.")
+                if not nombre_usr or not dni_usr:
+                    st.warning("⚠️ Por favor ingrese su Nombre y DNI/Legajo antes de enviar la evaluación.")
                 else:
-                    st.error("No alcanzado. Se requiere un mínimo de 70% para aprobar.")
+                    correctas = 0
+                    for idx, q in enumerate(preguntas_filtradas):
+                        resp_usr = respuestas_usuario[idx]
+                        resp_cor = q.get("respuesta_correcta")
+                        
+                        if resp_usr == resp_cor:
+                            correctas += 1
+                            st.success(f"**P{idx+1} Correcta:** {q.get('explicacion', '')}")
+                        else:
+                            st.error(f"**P{idx+1} Incorrecta:** Seleccionaste '{resp_usr}'. La respuesta correcta es '{resp_cor}'.")
+                            if q.get('explicacion'):
+                                st.info(f"💡 *Fundamento:* {q.get('explicacion')}")
+                    
+                    total_q = len(preguntas_filtradas)
+                    score = (correctas / total_q) * 100 if total_q > 0 else 0
+                    
+                    st.divider()
+                    st.metric("Puntaje Obtenido", f"{score:.0f} / 100", f"{correctas} de {total_q} correctas")
+                    
+                    if score >= 70:
+                        st.balloons()
+                        st.success(f"¡Aprobado! Postulante **{nombre_usr}** (DNI: {dni_usr}) cumple con el estándar de capacitación técnica MENFA.")
+                    else:
+                        st.error(f"No alcanzado. **{nombre_usr}**, se requiere un mínimo de 70% para aprobar.")
