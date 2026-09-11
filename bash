@@ -25,3 +25,4 @@ git add data/
 git add app.py
 git commit -m "feat: integración de base de datos JSON para preguntas y casos de inspección"
 git push origin main
+pip install reportlab
