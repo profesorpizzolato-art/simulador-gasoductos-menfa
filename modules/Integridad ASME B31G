@@ -1,0 +1,55 @@
+# Función matemática para cálculo de presión remanente (ASME B31G)
+def calcular_asme_b31g(maop_bar, d_ext_mm, espesor_mm, smys_mpa, prof_corrosion_mm, long_corrosion_mm):
+    if espesor_mm <= 0 or d_ext_mm <= 0:
+        return 0.0, 0.0, "Inválido"
+    
+    d_pct = (prof_corrosion_mm / espesor_mm) * 100.0
+    if d_pct > 80:
+        return 0.0, 0.0, "RECHAZADO: Profundidad > 80% del espesor nominal"
+    
+    # Parámetro Folias (A)
+    import math
+    A = 0.893 * (long_corrosion_mm / math.sqrt(d_ext_mm * espesor_mm))
+    
+    # Factor de corrección M
+    if A <= 4.0:
+        M = math.sqrt(1 + 0.6275 * (long_corrosion_mm**2 / (d_ext_mm * espesor_mm)) - 0.00337 * (long_corrosion_mm**4 / (d_ext_mm**2 * espesor_mm**2)))
+    else:
+        M = 0.032 * (long_corrosion_mm**2 / (d_ext_mm * espesor_mm)) + 3.3
+        
+    p_falla_bar = ((2 * espesor_mm * (smys_mpa * 10)) / d_ext_mm) * ((1 - (2/3)*(prof_corrosion_mm/espesor_mm)) / (1 - (2/3)*(prof_corrosion_mm/espesor_mm)/M))
+    p_safe_bar = p_falla_bar * 0.72  # Factor de seguridad habitual
+    
+    estado = "APTO PARA OPERAR" if p_safe_bar >= maop_bar else "REQUIERE REPARACIÓN / REBAJA DE PRESIÓN"
+    return round(p_falla_bar, 2), round(p_safe_bar, 2), estado
+
+# Agregar en el selector de la barra lateral:
+# "6. Integridad de Cañerías (ASME B31G)"
+
+# Bloque a incluir en el flujo del condicional de módulos:
+elif "6. Integridad" in modulo:
+    st.subheader("🛡️ Evaluación de Defectos por Corrosión (ASME B31G)")
+    
+    c1, c2 = st.columns(2)
+    with c1:
+        maop_op = st.number_input("MAOP de Operación (bar)", value=60.0)
+        d_ext_i = st.number_input("Diámetro Exterior (mm)", value=323.8) # 12"
+        esp_i = st.number_input("Espesor Nominal (mm)", value=9.52)
+        smys_i = st.selectbox("SMYS del Acero (MPa)", [241, 290, 360, 415], index=2)
+        
+    with c2:
+        prof_d = st.number_input("Profundidad del Defecto d (mm)", value=2.5)
+        long_L = st.number_input("Longitud del Defecto L (mm)", value=120.0)
+        
+    p_falla, p_safe, dictamen_b31g = calcular_asme_b31g(maop_op, d_ext_i, esp_i, smys_i, prof_d, long_L)
+    
+    st.divider()
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Presión de Falla Estimada", f"{p_falla} bar")
+    m2.metric("Presión Admisible Segura", f"{p_safe} bar")
+    m3.metric("Relación d/t", f"{(prof_d/esp_i)*100:.1f}%")
+    
+    if "APTO" in dictamen_b31g:
+        st.success(f"✅ Dictamen: {dictamen_b31g}")
+    else:
+        st.error(f"⚠️ Dictamen: {dictamen_b31g}")
