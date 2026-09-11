@@ -1,0 +1,42 @@
+[
+  {
+    "id_caso": "ESC-101",
+    "titulo": "Profundidad de Tapada en Cruce Especial",
+    "ubicacion": "PK 24+500 - Cruce de Carretera sin Encamisado",
+    "clase_trazado": 3,
+    "parametros_medidos": {
+      "diametro_nominal": "12 Pulgadas",
+      "profundidad_tapada_m": 0.80,
+      "revestimiento": "Tricapa de Polietileno",
+      "senalizacion": "Cinta de advertencia a 0.30 m sobre lomo de caño"
+    },
+    "opciones_dictamen": [
+      "Conforme",
+      "No Conforme - Tapada Insuficiente",
+      "No Conforme - Revestimiento Inadecuado"
+    ],
+    "dictamen_correcto": "No Conforme - Tapada Insuficiente",
+    "referencia_normativa": "NAG-100 Parte G (Construcción)",
+    "fundamento": "En Clase 3, la profundidad mínima requerida para cruces de carreteras sin encamisado es de 1,20 m medida desde el fondo de la cuneta o rasante."
+  },
+  {
+    "id_caso": "ESC-102",
+    "titulo": "Verificación de Ovalación y Abolladuras",
+    "ubicacion": "PK 12+100 - Tramo Aéreo en Soporte",
+    "clase_trazado": 1,
+    "parametros_medidos": {
+      "diametro_nominal": "10 Pulgadas",
+      "profundidad_abolladura_mm": 18.0,
+      "espesor_nom_mm": 6.35,
+      "presion_operacion_bar": 60
+    },
+    "opciones_dictamen": [
+      "Aceptable sin reparación",
+      "Rechazado - Requiere corte de tramo o envolvente soldada",
+      "Aceptable con monitoreo anual"
+    ],
+    "dictamen_correcto": "Rechazado - Requiere corte de tramo o envolvente soldada",
+    "referencia_normativa": "NAG-100 Parte I (Requisitos de Operación y Mantenimiento)",
+    "fundamento": "Cualquier abolladura con profundidad mayor al 2% del diámetro exterior del caño (para 10\" = 5,4 mm) afecta la integridad y debe ser reparada."
+  }
+]
