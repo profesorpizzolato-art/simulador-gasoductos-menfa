@@ -187,3 +187,72 @@ elif "3. Inspección" in modulo:
             st.success("¡Correcto! La NAG-100 exige un mínimo de 1.20 metros de tapada en cruces de carreteras para Clase 3 sin encamisado.")
         else:
             st.error("Incorrecto. 0.80 m no cumple el requisito reglamentario para cruces especiales.")
+
+# ---------------------------------------------------------
+# MÓDULO 4: TAPADAS MÍNIMAS DE ZANJA
+# ---------------------------------------------------------
+elif "4. Verificación" in modulo:
+    st.subheader("🚜 Tabla de Tapadas Mínimas de Zanja (NAG-100 Sección 327)")
+    
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        tipo_ubicacion = st.selectbox(
+            "Ubicación de la Instalación",
+            ["Ubicación Normal (Tierra)", "Roca Consolidada", "Cruces de Carreteras / FFCC", "Cursos de Agua / Zonas Anegables"]
+        )
+        clase_sel = st.selectbox("Clase de Trazado", [1, 2, 3, 4], index=2)
+    
+    with col_t2:
+        # Criterio normativo
+        if tipo_ubicacion == "Ubicación Normal (Tierra)":
+            tapada_min = 0.60 if clase_sel == 1 else 0.80
+        elif tipo_ubicacion == "Roca Consolidada":
+            tapada_min = 0.50 if clase_sel == 1 else 0.60
+        elif tipo_ubicacion == "Cruces de Carreteras / FFCC":
+            tapada_min = 1.20
+        else:
+            tapada_min = 1.20
+
+        st.metric("Tapada Mínima Exigida", f"{tapada_min:.2f} m")
+        tapada_real = st.number_input("Profundidad Medida en Campo (m)", value=0.90, step=0.05)
+        
+        if tapada_real >= tapada_min:
+            st.success("✅ Profundidad conforme a la norma NAG-100.")
+        else:
+            st.error(f"❌ No Conforme: Se requieren al menos {tapada_min:.2f} m de tapada.")
+
+# ---------------------------------------------------------
+# MÓDULO 5: EXAMEN DE EVALUACIÓN
+# ---------------------------------------------------------
+elif "5. Examen" in modulo:
+    st.subheader("📝 Módulo de Evaluación Técnica")
+    
+    if not preguntas_db:
+        st.warning("⚠️ No se encontró la base de datos `data/preguntas.json`. Agrega el archivo para habilitar los cuestionarios.")
+    else:
+        respuestas_usuario = {}
+        with st.form("form_examen"):
+            for idx, q in enumerate(preguntas_db):
+                st.write(f"**Pregunta {idx+1}:** {q.get('pregunta', '')}")
+                respuestas_usuario[idx] = st.radio(
+                    "Selecciona una opción:",
+                    q.get("opciones", []),
+                    key=f"q_{idx}"
+                )
+                st.divider()
+            
+            submit = st.form_submit_button("Enviar Respuestas")
+        
+        if submit:
+            correctas = 0
+            for idx, q in enumerate(preguntas_db):
+                if respuestas_usuario[idx] == q.get("respuesta_correcta"):
+                    correctas += 1
+            
+            score = (correctas / len(preguntas_db)) * 100
+            st.metric("Puntaje Obtenido", f"{score:.0f} / 100")
+            if score >= 70:
+                st.balloons()
+                st.success("¡Aprobado! Cumple con el estándar de capacitación técnica MENFA.")
+            else:
+                st.error("No alcanzado. Se requiere un mínimo de 70% para aprobar.")
