@@ -21,3 +21,7 @@ git remote add origin https://github.com/TU-USUARIO/simulador-gasoductos-menfa.g
 
 # Subir los archivos
 git push -u origin main
+git add data/
+git add app.py
+git commit -m "feat: integración de base de datos JSON para preguntas y casos de inspección"
+git push origin main
