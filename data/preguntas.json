@@ -1,44 +1,66 @@
-[
-  {
-    "id": "P101",
-    "modulo": "Módulo 1: Generalidades",
-    "nivel": "Operador",
-    "pregunta": "¿Cuál es la norma central aprobada por ENARGAS que regula la seguridad para el transporte y distribución de gas por cañerías en Argentina?",
-    "opciones": [
-      "NAG-201",
-      "NAG-100",
-      "NAG-153",
-      "ASME B31.3"
-    ],
-    "respuesta_correcta": "NAG-100",
-    "explicacion": "La NAG-100 es la norma troncal de ENARGAS que establece los requisitos mínimos de diseño, construcción, operación y mantenimiento de sistemas de cañerías de gas."
-  },
-  {
-    "id": "P102",
-    "modulo": "Módulo 1: Generalidades",
-    "nivel": "Inspector",
-    "pregunta": "Según la NAG-100, ¿cuál es la longitud base utilizada para determinar la Clase de Trazado a lo largo del eje del gasoducto?",
-    "opciones": [
-      "1.000 metros",
-      "1.600 metros (1 milla)",
-      "500 metros",
-      "2.000 metros"
-    ],
-    "respuesta_correcta": "1.600 metros (1 milla)",
-    "explicacion": "La Unidad de Trazado comprende una franja de 1.600 metros contiguos a lo largo del eje de la cañería por 200 metros de ancho a cada lado."
-  },
-  {
-    "id": "P201",
-    "modulo": "Módulo 2: Diseño",
-    "nivel": "Ingeniero",
-    "pregunta": "¿Qué Factor de Diseño (F) corresponde a una cañería instalada en Clase de Trazado 3?",
-    "opciones": [
-      "0.72",
-      "0.60",
-      "0.50",
-      "0.40"
-    ],
-    "respuesta_correcta": "0.50",
-    "explicacion": "Los Factores de Diseño (F) son: Clase 1 = 0.72, Clase 2 = 0.60, Clase 3 = 0.50 y Clase 4 = 0.40."
-  }
-]
+{
+  "módulo_1_generalidades": [
+    {
+      "id": "P101",
+      "nivel": "Operador",
+      "pregunta": "¿Cuál es la norma central aprobada por ENARGAS que regula la seguridad para el transporte y distribución de gas por cañerías en Argentina?",
+      "opciones": ["NAG-201", "NAG-100", "NAG-153", "ASME B31.3"],
+      "respuesta_correcta": "NAG-100",
+      "explicacion": "La NAG-100 es la norma troncal de ENARGAS que establece los requisitos mínimos de diseño, construcción, operación y mantenimiento de cañerías de gas."
+    },
+    {
+      "id": "P102",
+      "nivel": "Inspector",
+      "pregunta": "Según la NAG-100, ¿cuál es la longitud base utilizada para determinar la Clase de Trazado a lo largo del eje del gasoducto?",
+      "opciones": ["1.000 metros", "1.600 metros (1 milla)", "500 metros", "2.000 metros"],
+      "respuesta_correcta": "1.600 metros (1 milla)",
+      "explicacion": "La Unidad de Trazado comprende una franja de 1.600 metros a lo largo del eje de la cañería por 200 metros de ancho a cada lado."
+    }
+  ],
+  "módulo_2_diseño": [
+    {
+      "id": "P201",
+      "nivel": "Ingeniero",
+      "pregunta": "¿Qué Factor de Diseño (F) corresponde a una cañería instalada en Clase de Trazado 3?",
+      "opciones": ["0.72", "0.60", "0.50", "0.40"],
+      "respuesta_correcta": "0.50",
+      "explicacion": "Los Factores de Diseño (F) según NAG-100 son: Clase 1 = 0.72, Clase 2 = 0.60, Clase 3 = 0.50 y Clase 4 = 0.40."
+    },
+    {
+      "id": "P202",
+      "nivel": "Ingeniero",
+      "pregunta": "¿Cuál es el Factor de Junta E utilizado para cañerías de acero sin costura o con soldadura longitudinal inspeccionada?",
+      "opciones": ["1.00", "0.85", "0.60", "0.75"],
+      "respuesta_correcta": "1.00",
+      "explicacion": "El factor de junta E es 1.00 para caño sin costura (SMLS) o con soldadura por fusión eléctrica de alta calidad inspeccionada."
+    }
+  ],
+  "módulo_3_pruebas_e_inspeccion": [
+    {
+      "id": "P301",
+      "nivel": "Inspector",
+      "pregunta": "¿Cuál es la presión mínima de prueba de resistencia exigida por NAG-124 para Clase de Trazado 3?",
+      "opciones": ["1.10 x MAOP", "1.25 x MAOP", "1.40 x MAOP", "1.50 x MAOP"],
+      "respuesta_correcta": "1.40 x MAOP",
+      "explicacion": "NAG-124 especifica que la presión de prueba de resistencia debe ser como mínimo 1.40 veces la MAOP para Clase 3."
+    },
+    {
+      "id": "P302",
+      "nivel": "Inspector",
+      "pregunta": "¿Cuál es la profundidad mínima de tapada en suelo normal para Clase de Trazado 3 según NAG-100?",
+      "opciones": ["0.60 m", "0.80 m", "1.00 m", "1.20 m"],
+      "respuesta_correcta": "0.80 m",
+      "explicacion": "La NAG-100 (Sección 327) exige una tapada mínima de 0.80 metros en terrenos normales para Clases de Trazado 2, 3 y 4."
+    }
+  ],
+  "módulo_4_integridad_b31g": [
+    {
+      "id": "P401",
+      "nivel": "Ingeniero",
+      "pregunta": "En la evaluación de corrosión según ASME B31G, ¿cuál es el límite máximo permitido para la profundidad del defecto (d/t)?",
+      "opciones": ["50%", "60%", "70%", "80%"],
+      "respuesta_correcta": "80%",
+      "explicacion": "Si la profundidad de la pérdida de metal supera el 80% del espesor nominal de pared (t), la cañería debe ser rechazada/reparada inmediatamente."
+    }
+  ]
+}
