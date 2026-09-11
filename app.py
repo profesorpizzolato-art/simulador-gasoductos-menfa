@@ -52,3 +52,15 @@ elif "2. Inspección" in modulo:
             st.success("¡Correcto! La NAG-100 exige un mínimo de 1.20 m de profundidad en cruces de carreteras para Clase 3 sin encamisado.")
         else:
             st.error("Incorrecto. 0.80 m no cumple el requerimiento reglamentario.")
+import json
+import streamlit as st
+
+@st.cache_data
+def cargar_datos_normativos():
+    with open("data/preguntas.json", "r", encoding="utf-8") as f_preguntas:
+        preguntas = json.load(f_preguntas)
+    with open("data/escenarios.json", "r", encoding="utf-8") as f_escenarios:
+        escenarios = json.load(f_escenarios)
+    return preguntas, escenarios
+
+preguntas_db, escenarios_db = cargar_datos_normativos()
