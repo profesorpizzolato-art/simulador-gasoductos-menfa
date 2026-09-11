@@ -1,55 +1,354 @@
-# Función matemática para cálculo de presión remanente (ASME B31G)
-def calcular_asme_b31g(maop_bar, d_ext_mm, espesor_mm, smys_mpa, prof_corrosion_mm, long_corrosion_mm):
-    if espesor_mm <= 0 or d_ext_mm <= 0:
-        return 0.0, 0.0, "Inválido"
+import json
+import math
+import streamlit as st
+import plotly.graph_objects as go
+
+# Configuración de página
+st.set_page_config(
+    page_title="Simulador MENFA | Gasoductos NAG-100 & ASME B31G",
+    page_icon="⚡",
+    layout="wide"
+)
+
+# ---------------------------------------------------------
+# TABLAS NORMATIVAS Y COMERCIALES (API 5L)
+# ---------------------------------------------------------
+ESPESORES_COMERCIALES_MM = [
+    3.18, 4.78, 5.56, 6.35, 7.14, 7.92, 8.74, 9.53, 10.31, 
+    11.13, 12.70, 14.27, 15.88, 17.48, 19.05, 20.62, 22.23
+]
+
+def obtener_espesor_comercial(t_req):
+    for t_com in ESPESORES_COMERCIALES_MM:
+        if t_com >= t_req:
+            return t_com
+    return ESPESORES_COMERCIALES_MM[-1]
+
+# ---------------------------------------------------------
+# CARGA Y NORMALIZACIÓN DE DATOS SECUNDARIOS
+# ---------------------------------------------------------
+@st.cache_data
+def cargar_datos_normativos():
+    preguntas_planas = []
+    escenarios = []
     
-    d_pct = (prof_corrosion_mm / espesor_mm) * 100.0
-    if d_pct > 80:
-        return 0.0, 0.0, "RECHAZADO: Profundidad > 80% del espesor nominal"
-    
-    # Parámetro Folias (A)
-    import math
-    A = 0.893 * (long_corrosion_mm / math.sqrt(d_ext_mm * espesor_mm))
-    
-    # Factor de corrección M
-    if A <= 4.0:
-        M = math.sqrt(1 + 0.6275 * (long_corrosion_mm**2 / (d_ext_mm * espesor_mm)) - 0.00337 * (long_corrosion_mm**4 / (d_ext_mm**2 * espesor_mm**2)))
+    try:
+        with open("data/preguntas.json", "r", encoding="utf-8") as f_preg:
+            data_preg = json.load(f_preg)
+            if isinstance(data_preg, dict):
+                for modulo_nombre, lista_q in data_preg.items():
+                    for q in lista_q:
+                        preguntas_planas.append({
+                            "id": str(q.get("id", "")).strip(),
+                            "modulo": modulo_nombre.replace("_", " ").title(),
+                            "nivel": str(q.get("nivel", "")).strip(),
+                            "pregunta": str(q.get("pregunta", "")).strip(),
+                            "opciones": [str(opt).strip() for opt in q.get("opciones", [])],
+                            "respuesta_correcta": str(q.get("respuesta_correcta", "")).strip().replace(",", "."),
+                            "explicacion": str(q.get("explicacion", "")).strip()
+                        })
+            elif isinstance(data_preg, list):
+                preguntas_planas = data_preg
+    except Exception:
+        preguntas_planas = []
+
+    try:
+        with open("data/escenarios.json", "r", encoding="utf-8") as f_esc:
+            escenarios = json.load(f_esc)
+    except Exception:
+        escenarios = []
+
+    return preguntas_planas, escenarios
+
+preguntas_db, escenarios_db = cargar_datos_normativos()
+
+# ---------------------------------------------------------
+# FUNCIONES DE CÁLCULO NORMATIVO
+# ---------------------------------------------------------
+def calcular_espesor_nag100(p_diseno_bar, d_ext_mm, smys_mpa, factor_f, factor_e=1.0, factor_t=1.0):
+    p_mpa = p_diseno_bar / 10.0
+    s_adm_mpa = smys_mpa * factor_f * factor_e * factor_t
+    if s_adm_mpa <= 0:
+        return 0.0
+    t_requerido_mm = (p_mpa * d_ext_mm) / (2 * s_adm_mpa)
+    return round(t_requerido_mm, 2)
+
+def determinar_clase_trazado(viviendas_zona_influencia, es_edificio_alto=False):
+    if es_edificio_alto:
+        return 4, 0.40
+    elif viviendas_zona_influencia <= 10:
+        return 1, 0.72
+    elif 11 <= viviendas_zona_influencia < 46:
+        return 2, 0.60
     else:
-        M = 0.032 * (long_corrosion_mm**2 / (d_ext_mm * espesor_mm)) + 3.3
-        
-    p_falla_bar = ((2 * espesor_mm * (smys_mpa * 10)) / d_ext_mm) * ((1 - (2/3)*(prof_corrosion_mm/espesor_mm)) / (1 - (2/3)*(prof_corrosion_mm/espesor_mm)/M))
-    p_safe_bar = p_falla_bar * 0.72  # Factor de seguridad habitual
-    
-    estado = "APTO PARA OPERAR" if p_safe_bar >= maop_bar else "REQUIERE REPARACIÓN / REBAJA DE PRESIÓN"
-    return round(p_falla_bar, 2), round(p_safe_bar, 2), estado
+        return 3, 0.50
 
-# Agregar en el selector de la barra lateral:
-# "6. Integridad de Cañerías (ASME B31G)"
+def calcular_prueba_nag124(maop_bar, clase_trazado):
+    factores = {1: 1.25, 2: 1.25, 3: 1.40, 4: 1.50}
+    factor = factores.get(clase_trazado, 1.40)
+    return {
+        "factor": factor,
+        "p_resistencia": round(maop_bar * factor, 2),
+        "p_hermeticidad": round(maop_bar * 1.10, 2)
+    }
 
-# Bloque a incluir en el flujo del condicional de módulos:
-elif "6. Integridad" in modulo:
-    st.subheader("🛡️ Evaluación de Defectos por Corrosión (ASME B31G)")
+def verificar_tension_hoop(p_prueba_bar, d_ext_mm, espesor_mm, smys_mpa):
+    if espesor_mm <= 0:
+        return 0.0, 0.0
+    p_mpa = p_prueba_bar / 10.0
+    tension_mpa = (p_mpa * d_ext_mm) / (2 * espesor_mm)
+    pct_smys = (tension_mpa / smys_mpa) * 100
+    return round(tension_mpa, 2), round(pct_smys, 1)
+
+def evaluar_asme_b31g(maop_bar, d_ext_mm, espesor_nom_mm, prof_defecto_mm, longitud_defecto_mm):
+    """
+    Evaluación de severidad de corrosión según ASME B31G (Original)
+    """
+    if espesor_nom_mm <= 0 or d_ext_mm <= 0:
+        return {}
+
+    pct_profundidad = (prof_defecto_mm / espesor_nom_mm) * 100
     
-    c1, c2 = st.columns(2)
-    with c1:
-        maop_op = st.number_input("MAOP de Operación (bar)", value=60.0)
-        d_ext_i = st.number_input("Diámetro Exterior (mm)", value=323.8) # 12"
-        esp_i = st.number_input("Espesor Nominal (mm)", value=9.52)
-        smys_i = st.selectbox("SMYS del Acero (MPa)", [241, 290, 360, 415], index=2)
-        
-    with c2:
-        prof_d = st.number_input("Profundidad del Defecto d (mm)", value=2.5)
-        long_L = st.number_input("Longitud del Defecto L (mm)", value=120.0)
-        
-    p_falla, p_safe, dictamen_b31g = calcular_asme_b31g(maop_op, d_ext_i, esp_i, smys_i, prof_d, long_L)
+    # 1. Criterio de profundidad máxima (80% de t)
+    if pct_profundidad >= 80.0:
+        return {
+            "estado": "RECHAZADO",
+            "motivo": "Profundidad del defecto >= 80% del espesor nominal. Exige reparación o reemplazo inmediato.",
+            "p_safe_bar": 0.0,
+            "pct_prof": pct_profundidad,
+            "A_factor": 0.0
+        }
+
+    # 2. Factor A de longitud geométrica
+    A = 0.893 * (longitud_defecto_mm / math.sqrt(d_ext_mm * espesor_nom_mm))
+    d_over_t = prof_defecto_mm / espesor_nom_mm
+
+    # 3. Presión Máxima Admisible Reducida (P_safe)
+    if A <= 4.0:
+        num = 1 - (2/3) * d_over_t
+        den = 1 - (2/3) * (d_over_t / math.sqrt(A**2 + 1))
+        p_safe = 1.1 * maop_bar * (num / den)
+    else:
+        p_safe = 1.1 * maop_bar * (1 - d_over_t)
+
+    # Criterio: P_safe no puede superar la MAOP original
+    p_safe_final = min(maop_bar, p_safe)
+
+    if p_safe_final >= maop_bar:
+        estado = "ACEPTABLE"
+        motivo = "El defecto no compromete la MAOP. La cañería es apta para continuar operando."
+    else:
+        estado = "RELIQUIDEZ / DERATING"
+        motivo = f"El defecto reduce la resistencia. Se requiere un Derating operacional a {p_safe_final:.1f} bar o reparación."
+
+    return {
+        "estado": estado,
+        "motivo": motivo,
+        "p_safe_bar": round(p_safe_final, 2),
+        "pct_prof": round(pct_profundidad, 1),
+        "A_factor": round(A, 3)
+    }
+
+# ---------------------------------------------------------
+# INTERFAZ PRINCIPAL Y NAVEGACIÓN
+# ---------------------------------------------------------
+st.title("⚡ Simulador de Aplicación Normativa: NAG-100 / 124 / ASME B31G")
+st.caption("MENFA - Capacitación Técnica e Integridad de Ductos")
+
+st.sidebar.title("Menú Principal")
+modulo = st.sidebar.selectbox(
+    "Seleccionar Módulo",
+    [
+        "1. Cálculo de Diseño (NAG-100)",
+        "2. Pruebas Hidrostáticas (NAG-124)",
+        "3. Inspección de Campo",
+        "4. Verificación de Tapadas (NAG-100)",
+        "5. Evaluación Corrosión (ASME B31G)",
+        "6. Examen de Evaluación"
+    ]
+)
+
+# ---------------------------------------------------------
+# MÓDULO 1: CÁLCULO DE DISEÑO
+# ---------------------------------------------------------
+if "1. Cálculo" in modulo:
+    st.subheader("📐 Cálculo de Espesor Mínimo (Ecuación de Barlow / NAG-100)")
+    col1, col2 = st.columns(2)
+    with col1:
+        presion_bar = st.slider("Presión de Diseño (bar)", 10, 120, 75, 5)
+        dn_inch = st.selectbox("Diámetro Nominal (pulgadas)", [4, 6, 8, 10, 12, 16, 20, 24, 30, 36], index=4)
+        d_ext_mm = dn_inch * 25.4
+        viviendas = st.number_input("Viviendas en Zona de Influencia (1600m x 200m)", value=5, min_value=0)
+        es_edificio = st.checkbox("¿Predominan edificios de 4 o más pisos? (Clase 4)")
+        clase, factor_f = determinar_clase_trazado(viviendas, es_edificio)
+        st.info(f"**Clase de Trazado Detectada:** Clase {clase} (Factor F = {factor_f})")
+
+    with col2:
+        grado_acero = st.selectbox("Grado API 5L", ["Grado B (241 MPa)", "X42 (290 MPa)", "X52 (360 MPa)", "X60 (415 MPa)", "X70 (485 MPa)"], index=2)
+        smys_dict = {"Grado B (241 MPa)": 241, "X42 (290 MPa)": 290, "X52 (360 MPa)": 360, "X60 (415 MPa)": 415, "X70 (485 MPa)": 485}
+        smys_val = smys_dict[grado_acero]
+        factor_e = st.selectbox("Factor de Junta E", [1.00, 0.85, 0.60], index=0)
+        factor_t = st.selectbox("Factor de Temperatura T", [1.00, 0.937, 0.867], index=0)
+
+    espesor_req = calcular_espesor_nag100(presion_bar, d_ext_mm, smys_val, factor_f, factor_e, factor_t)
+    espesor_com = obtener_espesor_comercial(espesor_req)
+    tension_calculada = (presion_bar / 10.0 * d_ext_mm) / (2 * espesor_req) if espesor_req > 0 else 0.0
     
     st.divider()
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Diámetro Exterior", f"{d_ext_mm:.1f} mm")
+    m2.metric("Espesor Mínimo Calculado", f"{espesor_req} mm")
+    m3.metric("Espesor Comercial Recom.", f"{espesor_com} mm", f"+{round(espesor_com - espesor_req, 2)} mm")
+    m4.metric("Tensión Admisible (S x F)", f"{smys_val * factor_f:.1f} MPa")
+
+# ---------------------------------------------------------
+# MÓDULO 2: PRUEBAS NAG-124
+# ---------------------------------------------------------
+elif "2. Pruebas" in modulo:
+    st.subheader("🧪 Presiones de Prueba de Resistencia y Hermeticidad (NAG-124)")
+    c1, c2 = st.columns(2)
+    with c1:
+        maop = st.number_input("MAOP / Presión Máxima de Operación (bar)", value=60.0, step=5.0)
+        clase_tr = st.selectbox("Clase de Trazado del Tramo", [1, 2, 3, 4], index=2)
+        dn = st.selectbox("Diámetro Nominal (pulgadas)", [6, 8, 10, 12, 16, 20, 24], index=3)
+        d_ext = dn * 25.4
+
+    with c2:
+        espesor = st.number_input("Espesor Adquirido/Medido (mm)", value=7.11, step=0.1)
+        smys = st.selectbox("SMYS del Acero (MPa)", [241, 290, 360, 415, 485], index=2)
+
+    prueba = calcular_prueba_nag124(maop, clase_tr)
+    p_res = prueba["p_resistencia"]
+    sigma_m, pct_smys = verificar_tension_hoop(p_res, d_ext, espesor, smys)
+
+    st.divider()
     m1, m2, m3 = st.columns(3)
-    m1.metric("Presión de Falla Estimada", f"{p_falla} bar")
-    m2.metric("Presión Admisible Segura", f"{p_safe} bar")
-    m3.metric("Relación d/t", f"{(prof_d/esp_i)*100:.1f}%")
+    m1.metric("Prueba Resistencia (Mínima)", f"{p_res} bar", f"Factor {prueba['factor']}x MAOP")
+    m2.metric("Prueba Hermeticidad", f"{prueba['p_hermeticidad']} bar", "1.10x MAOP")
+    m3.metric("Tensión Solicitada", f"{sigma_m} MPa", f"{pct_smys}% del SMYS")
+
+# ---------------------------------------------------------
+# MÓDULO 3: INSPECCIÓN DE CAMPO
+# ---------------------------------------------------------
+elif "3. Inspección" in modulo:
+    st.subheader("🔍 Auditoría de Campo y Detección de Hallazgos")
+    st.warning("📋 Caso #101: Tapada de Zanja en Cruce de Ruta (Clase 3)")
+    st.write("- Ubicación: PK 14+200 - Cruce Ruta Provincial")
+    st.write("- Profundidad de Tapada Medida: **0.80 metros**")
     
-    if "APTO" in dictamen_b31g:
-        st.success(f"✅ Dictamen: {dictamen_b31g}")
+    dictamen = st.radio("¿El parámetro cumple con NAG-100?", ["Conforme", "No Conforme - Tapada Insuficiente (Exige min. 1.20 m)", "Requiere más datos"])
+    if st.button("Validar Dictamen"):
+        if "No Conforme" in dictamen:
+            st.success("¡Correcto! NAG-100 exige 1.20m de tapada en cruces para Clase 3.")
+        else:
+            st.error("Incorrecto. 0.80 m no cumple el requisito reglamentario.")
+
+# ---------------------------------------------------------
+# MÓDULO 4: TAPADAS MÍNIMAS
+# ---------------------------------------------------------
+elif "4. Verificación" in modulo:
+    st.subheader("🚜 Tabla de Tapadas Mínimas de Zanja (NAG-100 Sección 327)")
+    col_t1, col_t2 = st.columns(2)
+    with col_t1:
+        tipo_ubicacion = st.selectbox("Ubicación de la Instalación", ["Ubicación Normal (Tierra)", "Roca Consolidada", "Cruces de Carreteras / FFCC", "Cursos de Agua"])
+        clase_sel = st.selectbox("Clase de Trazado", [1, 2, 3, 4], index=2)
+    with col_t2:
+        tapada_min = 0.60 if tipo_ubicacion == "Ubicación Normal (Tierra)" and clase_sel == 1 else (0.50 if tipo_ubicacion == "Roca Consolidada" and clase_sel == 1 else (0.60 if tipo_ubicacion == "Roca Consolidada" else 0.80))
+        if tipo_ubicacion in ["Cruces de Carreteras / FFCC", "Cursos de Agua"]:
+            tapada_min = 1.20
+        st.metric("Tapada Mínima Exigida", f"{tapada_min:.2f} m")
+
+# ---------------------------------------------------------
+# MÓDULO 5: EVALUACIÓN DE CORROSIÓN (ASME B31G)
+# ---------------------------------------------------------
+elif "5. Evaluación Corrosión" in modulo:
+    st.subheader("🔬 Evaluación de Pérdida de Metal por Corrosión (ASME B31G)")
+    st.markdown("Cálculo de Presión Remanente Segura de Operación (**$P_{safe}$**) en cañerías corroídas.")
+    
+    col_b1, col_b2 = st.columns(2)
+    
+    with col_b1:
+        st.markdown("**Parámetros de la Cañería**")
+        maop_b31g = st.number_input("MAOP Operativa (bar)", value=60.0, step=1.0)
+        dn_b31g = st.selectbox("Diámetro Nominal (pulgadas)", [4, 6, 8, 10, 12, 16, 20, 24, 30], index=4)
+        d_ext_b31g = dn_b31g * 25.4
+        t_nom_b31g = st.number_input("Espesor Nominal del Tubo (mm)", value=7.11, min_value=1.0, step=0.1)
+
+    with col_b2:
+        st.markdown("**Dimensiones de la Pérdida de Metal (Picadura)**")
+        d_defecto = st.number_input("Profundidad Máxima de Corrosión d (mm)", value=2.50, min_value=0.1, max_value=t_nom_b31g, step=0.1)
+        l_defecto = st.number_input("Longitud Axial del Defecto L (mm)", value=120.0, min_value=1.0, step=5.0)
+
+    res_b31g = evaluar_asme_b31g(maop_b31g, d_ext_b31g, t_nom_b31g, d_defecto, l_defecto)
+
+    st.divider()
+    
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Profundidad del Defecto", f"{res_b31g['pct_prof']}% t", help="Límite máximo admisible: 80%")
+    m2.metric("Factor Geométrico A", f"{res_b31g['A_factor']}", "A <= 4.0 (Defecto Corto)" if res_b31g['A_factor'] <= 4.0 else "A > 4.0 (Largo)")
+    m3.metric("MAOP Actual", f"{maop_b31g:.2f} bar")
+    
+    delta_p = res_b31g['p_safe_bar'] - maop_b31g
+    m4.metric("Presión Remanente (P_safe)", f"{res_b31g['p_safe_bar']:.2f} bar", f"{delta_p:.2f} bar" if delta_p < 0 else "Sin Derating")
+
+    if res_b31g["estado"] == "ACEPTABLE":
+        st.success(f"✅ **Dictamen:** {res_b31g['motivo']}")
+    elif res_b31g["estado"] == "RELIQUIDEZ / DERATING":
+        st.warning(f"⚠️ **Dictamen:** {res_b31g['motivo']}")
     else:
-        st.error(f"⚠️ Dictamen: {dictamen_b31g}")
+        st.error(f"❌ **Dictamen:** {res_b31g['motivo']}")
+
+    # Gráfico de indicador de presión de seguridad
+    fig_b31g = go.Figure(go.Indicator(
+        mode="gauge+number",
+        value=res_b31g['p_safe_bar'],
+        title={'text': "Presión Operativa Segura Admisible P_safe (bar)"},
+        gauge={
+            'axis': {'range': [0, maop_b31g * 1.2]},
+            'bar': {'color': "#2563EB" if res_b31g['p_safe_bar'] >= maop_b31g else "#DC2626"},
+            'steps': [
+                {'range': [0, maop_b31g], 'color': "#FEF3C7"},
+                {'range': [maop_b31g, maop_b31g * 1.2], 'color': "#D1FAE5"}
+            ],
+            'threshold': {
+                'line': {'color': "red", 'width': 4},
+                'value': maop_b31g
+            }
+        }
+    ))
+    fig_b31g.update_layout(margin=dict(l=30, r=30, t=50, b=20), height=300)
+    st.plotly_chart(fig_b31g, use_container_width=True)
+
+# ---------------------------------------------------------
+# MÓDULO 6: EXAMEN
+# ---------------------------------------------------------
+elif "6. Examen" in modulo:
+    st.subheader("📝 Módulo de Evaluación Técnica")
+    if not preguntas_db:
+        st.warning("⚠️ No se encontró la base de datos `data/preguntas.json`.")
+    else:
+        with st.expander("👤 Datos del Postulante", expanded=True):
+            col_u1, col_u2 = st.columns(2)
+            nombre_usr = col_u1.text_input("Nombre Completo:")
+            dni_usr = col_u2.text_input("DNI / Legajo:")
+
+        niveles_disponibles = sorted(list({q.get("nivel", "Todos") for q in preguntas_db if q.get("nivel")}))
+        nivel_seleccionado = st.multiselect("Filtrar por Perfil / Nivel Técnico:", options=niveles_disponibles, default=niveles_disponibles)
+        preguntas_filtradas = [q for q in preguntas_db if q.get("nivel") in nivel_seleccionado] if nivel_seleccionado else preguntas_db
+
+        if preguntas_filtradas:
+            respuestas_usuario = {}
+            with st.form("form_examen"):
+                for idx, q in enumerate(preguntas_filtradas):
+                    st.markdown(f"**Pregunta {idx+1}:** {q.get('pregunta', '')}")
+                    respuestas_usuario[idx] = st.radio("Selecciona opción:", q.get("opciones", []), key=f"q_{idx}")
+                    st.divider()
+                submit = st.form_submit_button("Enviar Respuestas")
+
+            if submit:
+                correctas = sum(1 for idx, q in enumerate(preguntas_filtradas) if respuestas_usuario[idx] == q.get("respuesta_correcta"))
+                score = (correctas / len(preguntas_filtradas)) * 100
+                st.metric("Puntaje Obtenido", f"{score:.0f} / 100")
+                if score >= 70:
+                    st.balloons()
+                    st.success(f"¡Aprobado! Postulante {nombre_usr} (DNI: {dni_usr}) califica para certificación.")
