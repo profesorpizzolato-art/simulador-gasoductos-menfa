@@ -1,45 +1,44 @@
-{
-  "modulo_1_generalidades": [
-    {
-      "id": "P101",
-      "nivel": "Operador",
-      "pregunta": "¿Cuál es la norma central aprobada por ENARGAS que regula la seguridad para el transporte y distribución de gas por cañerías en Argentina?",
-      "opciones": [
-        "NAG-201",
-        "NAG-100",
-        "NAG-153",
-        "ASME B31.3"
-      ],
-      "respuesta_correcta": "NAG-100",
-      "explicacion": "La NAG-100 es la norma troncal de ENARGAS que establece los requisitos mínimos de diseño, construcción, operación y mantenimiento de sistemas de cañerías de gas."
-    },
-    {
-      "id": "P102",
-      "nivel": "Inspector",
-      "pregunta": "Según la NAG-100, ¿cuál es la longitud base utilizada para determinar la Clase de Trazado a lo largo del eje del gasoducto?",
-      "opciones": [
-        "1.000 metros",
-        "1.600 metros (1 milla)",
-        "500 metros",
-        "2.000 metros"
-      ],
-      "respuesta_correcta": "1.600 metros (1 milla)",
-      "explicacion": "La Unidad de Trazado comprende una franja de 1.600 metros contiguos a lo largo del eje de la cañería por 200 metros de ancho a cada lado."
-    }
-  ],
-  "modulo_2_diseno": [
-    {
-      "id": "P201",
-      "nivel": "Ingeniero",
-      "pregunta": "¿Qué Factor de Diseño (F) corresponde a una cañería instalada en Clase de Trazado 3?",
-      "opciones": [
-        "0.72",
-        "0.60",
-        "0.50",
-        "0.40"
-      ],
-      "respuesta_correcta": "0.50",
-      "explicacion": "Los Factores de Diseño (F) son: Clase 1 = 0.72, Clase 2 = 0.60, Clase 3 = 0.50 y Clase 4 = 0.40."
-    }
-  ]
-}
+[
+  {
+    "id": "P101",
+    "modulo": "Módulo 1: Generalidades",
+    "nivel": "Operador",
+    "pregunta": "¿Cuál es la norma central aprobada por ENARGAS que regula la seguridad para el transporte y distribución de gas por cañerías en Argentina?",
+    "opciones": [
+      "NAG-201",
+      "NAG-100",
+      "NAG-153",
+      "ASME B31.3"
+    ],
+    "respuesta_correcta": "NAG-100",
+    "explicacion": "La NAG-100 es la norma troncal de ENARGAS que establece los requisitos mínimos de diseño, construcción, operación y mantenimiento de sistemas de cañerías de gas."
+  },
+  {
+    "id": "P102",
+    "modulo": "Módulo 1: Generalidades",
+    "nivel": "Inspector",
+    "pregunta": "Según la NAG-100, ¿cuál es la longitud base utilizada para determinar la Clase de Trazado a lo largo del eje del gasoducto?",
+    "opciones": [
+      "1.000 metros",
+      "1.600 metros (1 milla)",
+      "500 metros",
+      "2.000 metros"
+    ],
+    "respuesta_correcta": "1.600 metros (1 milla)",
+    "explicacion": "La Unidad de Trazado comprende una franja de 1.600 metros contiguos a lo largo del eje de la cañería por 200 metros de ancho a cada lado."
+  },
+  {
+    "id": "P201",
+    "modulo": "Módulo 2: Diseño",
+    "nivel": "Ingeniero",
+    "pregunta": "¿Qué Factor de Diseño (F) corresponde a una cañería instalada en Clase de Trazado 3?",
+    "opciones": [
+      "0.72",
+      "0.60",
+      "0.50",
+      "0.40"
+    ],
+    "respuesta_correcta": "0.50",
+    "explicacion": "Los Factores de Diseño (F) son: Clase 1 = 0.72, Clase 2 = 0.60, Clase 3 = 0.50 y Clase 4 = 0.40."
+  }
+]
