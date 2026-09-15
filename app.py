@@ -4,7 +4,7 @@ import pandas as pd
 import plotly.graph_objects as go
 from io import BytesIO
 
-# ReportLab imports for PDF generation
+# Importaciones de ReportLab para la generación de PDF
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -12,9 +12,9 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Simulador de Integridad de Ductos - ASME B31G",
+    page_title="Simulador de integridad de conductos - ASME B31G",
     page_icon="🛡️",
-    page_layout="wide",
+    layout="wide",
     initial_sidebar_state="expanded"
 )
 
@@ -42,9 +42,9 @@ def evaluar_asme_b31g(D, t, SMYS, P_diseno, d, L, factor_seguridad=1.25):
         A = 0.893 * (L / np.sqrt(D * t))
         
         if A <= 4.0:
-            M = np.sqrt(1 + 0.8 * (L**2 / (D * t)))
+            M = np.sqrt(1 + 0.8 * (L ** 2 / (D * t)))
         else:
-            M = 0.08 * (L**2 / (D * t)) + 3.3
+            M = 0.08 * (L ** 2 / (D * t)) + 3.3
             
         # Presión de flujo (S_flow) según ASME B31G original = 1.1 * SMYS
         S_flow = 1.1 * SMYS
@@ -52,8 +52,8 @@ def evaluar_asme_b31g(D, t, SMYS, P_diseno, d, L, factor_seguridad=1.25):
         # Presión de falla (P_pf)
         d_over_t = d / t
         if A <= 4.0:
-            num = 1 - (2/3) * d_over_t
-            den = 1 - (2/3) * (d_over_t / M) if M != 0 else 1.0
+            num = 1 - (2 / 3) * d_over_t
+            den = 1 - (2 / 3) * (d_over_t / M) if M != 0 else 1.0
             presion_fallo = (2 * t * S_flow / D) * (num / den)
         else:
             presion_fallo = (2 * t * S_flow / D) * (1 - d_over_t)
@@ -64,119 +64,97 @@ def evaluar_asme_b31g(D, t, SMYS, P_diseno, d, L, factor_seguridad=1.25):
     # Estado / Evaluación
     if falla_inminente or d >= 0.80 * t:
         estado = "CRÍTICO - Profundidad excesiva (>80% t)"
-        color_estado = "red"
+        color_estado = "rojo"
     elif P_diseno > presion_segura:
         estado = "NO SEGURO - Requiere Reducción de Presión o Reparación"
-        color_estado = "orange"
+        color_estado = "naranja"
     else:
         estado = "ACEPTABLE - Operación Segura bajo ASME B31G"
-        color_estado = "green"
+        color_estado = "verde"
         
     return {
         "pct_profundidad": pct_profundidad,
-        "A": A,
-        "M": M,
-        "presion_fallo": max(0.0, presion_fallo),
-        "presion_segura": max(0.0, presion_segura),
-        "presion_diseno": P_diseno,
+        "presion_fallo": presion_fallo,
+        "presion_segura": presion_segura,
         "estado": estado,
         "color_estado": color_estado,
-        "falla_inminente": falla_inminente
+        "M": M,
+        "A": A
     }
 
-# --- GENERADOR DE PDF (REPORTLAB) ---
 def generar_reporte_pdf(datos_tubo, resultados):
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=36, leftMargin=36, topMargin=36, bottomMargin=36)
-    story = []
+    doc = SimpleDocTemplate(buffer, pagesize=letter, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     styles = getSampleStyleSheet()
     
-    title_style = ParagraphStyle(
-        'DocTitle', parent=styles['Heading1'], fontSize=18, leading=22,
-        textColor=colors.HexColor('#1E3A8A'), alignment=1, spaceAfter=20
-    )
+    title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, leading=20, textColor=colors.HexColor('#1E3A8A'))
+    subtitle_style = ParagraphStyle('SubTitleStyle', parent=styles['Heading2'], fontSize=12, leading=16, textColor=colors.HexColor('#1F2937'))
+    normal_style = styles['Normal']
     
-    subtitle_style = ParagraphStyle(
-        'DocSubtitle', parent=styles['Heading2'], fontSize=13, leading=16,
-        textColor=colors.HexColor('#1E40AF'), spaceBefore=12, spaceAfter=8
-    )
-    
-    normal_style = ParagraphStyle(
-        'DocBody', parent=styles['Normal'], fontSize=10, leading=14,
-        textColor=colors.HexColor('#1F2937')
-    )
-    
-    # Encabezado
-    story.append(Paragraph("<b>REPORTE DE EVALUACIÓN DE INTEGRIDAD DE DUCTOS</b>", title_style))
-    story.append(Paragraph("<b>Criterio ASME B31G - Evaluación de Pérdida de Metal por Corrosión</b>", ParagraphStyle('SubHeader', parent=normal_style, alignment=1, textColor=colors.gray)))
-    story.append(Spacer(1, 15))
-    
-    # 1. Parámetros de Entrada
-    story.append(Paragraph("1. Parámetros Operativos y Geometría de Tubería", subtitle_style))
-    data_input = [
-        [Paragraph("<b>Parámetro</b>", normal_style), Paragraph("<b>Valor</b>", normal_style), Paragraph("<b>Unidad</b>", normal_style)],
-        ["Diámetro Exterior (D)", f"{datos_tubo['D']:.3f}", "pulgadas"],
-        ["Espesor de Pared Nominal (t)", f"{datos_tubo['t']:.3f}", "pulgadas"],
-        ["Grado del Material (SMYS)", f"{datos_tubo['SMYS']:,}", "psi"],
-        ["Presión de Operación / Diseño", f"{datos_tubo['P_diseno']:.1f}", "psi"],
-        ["Profundidad de Corrosión (d)", f"{datos_tubo['d']:.3f}", "pulgadas"],
-        ["Longitud Axial de Corrosión (L)", f"{datos_tubo['L']:.3f}", "pulgadas"],
-        ["Factor de Seguridad (FS)", f"{datos_tubo['FS']:.2f}", "-"]
-    ]
-    
-    t_input = Table(data_input, colWidths=[200, 150, 100])
-    t_input.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F3F4F6')),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 5),
-        ('TOPPADDING', (0,0), (-1,-1), 5),
-    ]))
-    story.append(t_input)
-    story.append(Spacer(1, 15))
-    
-    # 2. Resultados
-    story.append(Paragraph("2. Resultados de Integridad Estructural", subtitle_style))
     color_map = {
-        "green": colors.HexColor('#059669'),
-        "orange": colors.HexColor('#D97706'),
-        "red": colors.HexColor('#DC2626')
+        'verde': colors.HexColor('#10B981'),
+        'naranja': colors.HexColor('#F59E0B'),
+        'rojo': colors.HexColor('#EF4444')
     }
     
-    data_res = [
-        [Paragraph("<b>Indicador</b>", normal_style), Paragraph("<b>Resultado</b>", normal_style)],
-        ["Pérdida de Pared (%)", f"{resultados['pct_profundidad']:.1f}%"],
-        ["Parámetro de Folias (M)", f"{resultados['M']:.3f}" if resultados['M'] > 0 else "N/A"],
-        ["Presión Estimada de Falla (P_falla)", f"{resultados['presion_fallo']:.1f} psi"],
-        ["Presión Segura Admisible (P_segura)", f"{resultados['presion_segura']:.1f} psi"],
-        ["Presión de Diseño Actual", f"{resultados['presion_diseno']:.1f} psi"],
-        ["Diagnóstico de Integridad", f"{resultados['estado']}"]
-    ]
+    historia = []
     
+    historia.append(Paragraph("Reporte de Evaluación de Integridad - ASME B31G", title_style))
+    historia.append(Spacer(1, 15))
+    
+    historia.append(Paragraph("1. Parámetros de Entrada", subtitle_style))
+    data_input = [
+        ["Parámetro", "Valor"],
+        ["Diámetro Exterior (D)", f"{datos_tubo['D']} in"],
+        ["Espesor Nominal (t)", f"{datos_tubo['t']} in"],
+        ["SMYS Material", f"{datos_tubo['SMYS']} psi"],
+        ["Presión de Diseño", f"{datos_tubo['P_diseno']} psi"],
+        ["Profundidad Defecto (d)", f"{datos_tubo['d']} in"],
+        ["Longitud Defecto (L)", f"{datos_tubo['L']} in"],
+        ["Factor de Seguridad", f"{datos_tubo['FS']}"]
+    ]
+    t_input = Table(data_input, colWidths=[220, 230])
+    t_input.setStyle(TableStyle([
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F3F4F6')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+        ('TOPPADDING', (0, 0), (-1, -1), 4),
+    ]))
+    historia.append(t_input)
+    historia.append(Spacer(1, 15))
+    
+    historia.append(Paragraph("2. Resultados del Análisis", subtitle_style))
+    data_res = [
+        ["Métrica", "Resultado"],
+        ["Pérdida de Espesor", f"{resultados['pct_profundidad']:.1f} %"],
+        ["Presión de Falla Estimada", f"{resultados['presion_fallo']:.1f} psi"],
+        ["Presión Segura Admisible", f"{resultados['presion_segura']:.1f} psi"],
+        ["Estado", resultados['estado']]
+    ]
     t_res = Table(data_res, colWidths=[220, 230])
     t_res.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F3F4F6')),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#E5E7EB')),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
-        ('TEXTCOLOR', (1, 6), (1, 6), color_map.get(resultados['color_estado'], colors.black)),
-        ('FONTNAME', (0, 6), (-1, 6), 'Helvetica-Bold')
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F3F4F6')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E7EB')),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('TEXTCOLOR', (1, 3), (1, 3), color_map.get(resultados['color_estado'], colors.black)),
+        ('FONTNAME', (0, 3), (-1, 3), 'Helvetica-Bold')
     ]))
-    story.append(t_res)
-    story.append(Spacer(1, 20))
+    historia.append(t_res)
+    historia.append(Spacer(1, 20))
     
-    # 3. Recomendaciones
-    story.append(Paragraph("3. Recomendaciones Operativas", subtitle_style))
-    if resultados['color_estado'] == "green":
-        rec_text = "El defecto inspeccionado satisface las condiciones de integridad de ASME B31G. La tubería puede operar a la presión de diseño sin requerir desclasificación o reparación inmediata."
-    elif resultados['color_estado'] == "orange":
+    historia.append(Paragraph("3. Recomendaciones Operativas", subtitle_style))
+    if resultados['color_estado'] == "verde":
+        rec_text = "El defecto inspeccionado satisface las condiciones de integridad de ASME B31G. La tubería puede operar a la presión de diseño sin requerir reparación inmediata."
+    elif resultados['color_estado'] == "naranja":
         p_reducida = resultados['presion_segura']
-        rec_text = f"<b>ALERTA DE SEGURIDAD:</b> La presión de diseño ({datos_tubo['P_diseno']} psi) supera la presión admisible calculada ({p_reducida:.1f} psi). Se recomienda reducir la presión de operación a un valor no mayor a <b>{p_reducida:.1f} psi</b> o programar una reparación con camisa metálica/composite."
+        rec_text = f"<b>ALERTA DE SEGURIDAD:</b> La presión de diseño ({datos_tubo['P_diseno']} psi) supera la presión admisible calculada ({p_reducida:.1f} psi). Se recomienda reducir la presión de operación a un valor no mayor a <b>{p_reducida:.1f} psi</b> o programar una reparación."
     else:
-        rec_text = "<b>CRÍTICO:</b> La profundidad del defecto excede el 80% del espesor nominal. ASME B31G no considera seguro evaluar este defecto mediante este método simple. Requiere reparación física inmediata o reemplazo de carrete."
+        rec_text = "<b>CRÍTICO:</b> La profundidad del defecto excede el 80% del espesor nominal. Requiere reparación física inmediata o reemplazo de carrete."
         
-    story.append(Paragraph(rec_text, normal_style))
+    historia.append(Paragraph(rec_text, normal_style))
     
-    doc.build(story)
+    doc.build(historia)
     buffer.seek(0)
     return buffer
 
@@ -192,11 +170,11 @@ t = st.sidebar.number_input("Espesor Nominal - t (pulgadas)", min_value=0.05, ma
 grado_smys = st.sidebar.selectbox(
     "Grado del Material (SMYS)",
     options=[
-        ("API 5L X42 (42,000 psi)", 42000),
-        ("API 5L X52 (52,000 psi)", 52000),
-        ("API 5L X60 (60,000 psi)", 60000),
-        ("API 5L X65 (65,000 psi)", 65000),
-        ("API 5L X70 (70,000 psi)", 70000),
+        ("API 5L X42 (42.000 psi)", 42000),
+        ("API 5L X52 (52.000 psi)", 52000),
+        ("API 5L X60 (60.000 psi)", 60000),
+        ("API 5L X65 (65.000 psi)", 65000),
+        ("API 5L X70 (70.000 psi)", 70000),
         ("Personalizado", 0)
     ],
     format_func=lambda x: x[0]
@@ -207,7 +185,7 @@ SMYS = st.sidebar.number_input("SMYS Personalizado (psi)", min_value=20000, max_
 P_diseno = st.sidebar.number_input("Presión de Operación / Diseño - P (psi)", min_value=10.0, max_value=5000.0, value=900.0, step=10.0)
 
 st.sidebar.subheader("📐 Geometría del Defecto de Corrosión")
-d = st.sidebar.number_input("Profundidad del Defecto - d (pulgadas)", min_value=0.001, max_value=float(t), value=min(0.125, t*0.99), step=0.005)
+d = st.sidebar.number_input("Profundidad del Defecto - d (pulgadas)", min_value=0.001, max_value=float(t), value=min(0.125, t * 0.99), step=0.005)
 L = st.sidebar.number_input("Longitud Axial del Defecto - L (pulgadas)", min_value=0.01, max_value=50.0, value=4.5, step=0.1)
 
 factor_s = st.sidebar.slider("Factor de Seguridad (FS)", min_value=1.1, max_value=2.0, value=1.25, step=0.05)
@@ -220,9 +198,9 @@ col2.metric("Presión Estimada Falla", f"{res['presion_fallo']:.1f} psi")
 col3.metric("Presión Segura Admisible", f"{res['presion_segura']:.1f} psi")
 col4.metric("Presión de Operación", f"{P_diseno:.1f} psi")
 
-if res['color_estado'] == "green":
+if res['color_estado'] == "verde":
     st.success(f"✅ **ESTADO: {res['estado']}**")
-elif res['color_estado'] == "orange":
+elif res['color_estado'] == "naranja":
     st.warning(f"⚠️ **ESTADO: {res['estado']}**")
 else:
     st.error(f"🚨 **ESTADO: {res['estado']}**")
@@ -240,9 +218,9 @@ with tab1:
         p_fail_array.append(r_temp['presion_fallo'])
         
     fig = go.Figure()
-    fig.add_trace(go.Scatter(x=d_array/t*100, y=[P_diseno]*len(d_array), mode='lines', name='Presión Operación', line=dict(color='red', dash='dash')))
-    fig.add_trace(go.Scatter(x=d_array/t*100, y=p_fail_array, mode='lines', name='Presión Falla (P_falla)', line=dict(color='gray')))
-    fig.add_trace(go.Scatter(x=d_array/t*100, y=p_safe_array, mode='lines', name='Presión Segura (P_segura)', line=dict(color='green', width=3)))
+    fig.add_trace(go.Scatter(x=d_array / t * 100, y=[P_diseno] * len(d_array), mode='lines', name='Presión Operación', line=dict(color='red', dash='dash')))
+    fig.add_trace(go.Scatter(x=d_array / t * 100, y=p_fail_array, mode='lines', name='Presión Falla (P_falla)', line=dict(color='gray')))
+    fig.add_trace(go.Scatter(x=d_array / t * 100, y=p_safe_array, mode='lines', name='Presión Segura (P_segura)', line=dict(color='green', width=3)))
     fig.add_trace(go.Scatter(x=[res['pct_profundidad']], y=[res['presion_segura']], mode='markers', name='Defecto Actual', marker=dict(color='blue', size=12, symbol='star')))
     
     fig.update_layout(title=f"Evaluación ASME B31G (L = {L:.2f} in)", xaxis_title="Profundidad / Espesor t (%)", yaxis_title="Presión (psi)", template="plotly_white")
@@ -260,7 +238,7 @@ with tab3:
     pdf_buffer = generar_reporte_pdf(datos_tubo, res)
     
     st.download_button(
-        label="📥 Descargar Reporte PDF",
+        label="📥 Descargar Informe PDF",
         data=pdf_buffer,
         file_name=f"Reporte_ASME_B31G_{D}in.pdf",
         mime="application/pdf"
