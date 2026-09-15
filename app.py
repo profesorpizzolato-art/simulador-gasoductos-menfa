@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import numpy as np
 import pandas as pd
@@ -7,16 +8,27 @@ from io import BytesIO
 # Importaciones de ReportLab para la generación de PDF
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(
-    page_title="Simulador Avanzado de Integridad de Ductos",
+    page_title="Simulador Avanzado de Integridad de Ductos - MENFA",
     page_icon="🛡️",
     layout="wide",
     initial_sidebar_state="expanded"
 )
+
+# Ruta del logo de MENFA
+LOGO_PATH = "logo_menfa.png"
+
+# ==========================================
+# MOSTRAR LOGO EN LA BARRA LATERAL (STREAMLIT)
+# ==========================================
+if os.path.exists(LOGO_PATH):
+    st.sidebar.image(LOGO_PATH, use_container_width=True)
+else:
+    st.sidebar.info("💡 Coloca 'logo_menfa.png' en la carpeta raíz para ver el logo aquí.")
 
 # ==========================================
 # 1. CRITERIOS DE EVALUACIÓN TÉCNICA
@@ -42,11 +54,7 @@ def evaluar_asme_b31g_original(D, t, SMYS, P_diseno, d, L, factor_seguridad=1.25
         P_falla = (2 * t * S_flow / D) * (1 - d_over_t)
         
     P_segura = P_falla / factor_seguridad
-    
-    if P_diseno > P_segura:
-        estado, color = "NO SEGURO - Reducir Presión", "naranja"
-    else:
-        estado, color = "ACEPTABLE", "verde"
+    estado, color = ("NO SEGURO - Reducir Presión", "naranja") if P_diseno > P_segura else ("ACEPTABLE", "verde")
         
     return {"presion_fallo": P_falla, "presion_segura": P_segura, "estado": estado, "color": color, "pct_profundidad": pct_profundidad}
 
@@ -58,7 +66,7 @@ def evaluar_asme_b31g_modificado(D, t, SMYS, P_diseno, d, L, factor_seguridad=1.
     
     z = (L ** 2) / (D * t)
     M = np.sqrt(1 + 0.6275 * z - 0.003375 * (z ** 2)) if z <= 50 else (0.032 * z + 3.293)
-    S_flow = SMYS + 10000  # psi
+    S_flow = SMYS + 10000
     d_over_t = d / t
     
     num = 1 - 0.85 * d_over_t
@@ -83,7 +91,7 @@ def evaluar_dnv_rp_f101(D, t, SMYS, UTS, P_diseno, d, L, factor_seguridad=1.25):
     return {"presion_fallo": P_falla, "presion_segura": P_segura, "estado": estado, "color": color, "pct_profundidad": pct_profundidad}
 
 # ==========================================
-# 2. GENERACIÓN DE REPORTES PDF
+# 2. GENERACIÓN DE REPORTES PDF CON LOGO
 # ==========================================
 
 def generar_reporte_pdf(datos_tubo, resultados_multiples):
@@ -94,11 +102,20 @@ def generar_reporte_pdf(datos_tubo, resultados_multiples):
     title_style = ParagraphStyle('TitleStyle', parent=styles['Heading1'], fontSize=16, leading=20, textColor=colors.HexColor('#1E3A8A'))
     subtitle_style = ParagraphStyle('SubTitleStyle', parent=styles['Heading2'], fontSize=12, leading=16, textColor=colors.HexColor('#1F2937'))
     
-    historia = [
-        Paragraph("Reporte Comparativo de Integridad de Ductos", title_style),
+    historia = []
+    
+    # Incluir logo MENFA en el PDF si existe el archivo
+    if os.path.exists(LOGO_PATH):
+        img = Image(LOGO_PATH, width=150, height=50)
+        img.hAlign = 'LEFT'
+        historia.append(img)
+        historia.append(Spacer(1, 10))
+
+    historia.extend([
+        Paragraph("Reporte Comparativo de Integridad de Ductos - MENFA", title_style),
         Spacer(1, 15),
         Paragraph("1. Parámetros del Ducto y Defecto", subtitle_style)
-    ]
+    ])
     
     data_input = [
         ["Parámetro", "Valor"],
@@ -134,7 +151,7 @@ def generar_reporte_pdf(datos_tubo, resultados_multiples):
 # 3. INTERFAZ Y NAVEGACIÓN
 # ==========================================
 
-st.title("🛡️ Sistema Avanzado de Integridad de Ductos")
+st.title("🛡️ Sistema Avanzado de Integridad de Ductos - MENFA")
 
 st.sidebar.header("⚙️ Parámetros Básicos")
 D = st.sidebar.number_input("Diámetro Exterior - D (pulgadas)", 1.0, 60.0, 12.75, 0.25)
@@ -175,7 +192,7 @@ with tab_eval:
     res_mult = {"B31G Original": r_b31g, "B31G Modificado": r_mod, "DNV-RP-F101": r_dnv}
     
     pdf_buf = generar_reporte_pdf(datos_tubo, res_mult)
-    st.download_button("📥 Descargar Reporte Comparativo PDF", pdf_buf, "Reporte_Integridad_Comparativo.pdf", "application/pdf")
+    st.download_button("📥 Descargar Reporte Comparativo PDF", pdf_buf, "Reporte_Integridad_MENFA.pdf", "application/pdf")
 
 # ------------------------------------------
 # MODULO 2: VISUALIZACIÓN 3D & MATRIZ
@@ -185,13 +202,11 @@ with tab_3d:
     
     with col_a:
         st.subheader("Modelado 3D del Defecto")
-        # Generar superficie cilíndrica simplificada con hendidura
         theta = np.linspace(0, 2 * np.pi, 50)
         z = np.linspace(0, L * 3, 50)
         THETA, Z = np.meshgrid(theta, z)
         R = np.full_like(THETA, D / 2.0)
         
-        # Simular hendidura en la zona central
         mask_z = (Z > L) & (Z < L * 2)
         mask_th = (THETA > np.pi / 2) & (THETA < 3 * np.pi / 2)
         R[mask_z & mask_th] -= d
@@ -256,7 +271,7 @@ with tab_rla:
     st.subheader("Proyección Temporizada de Crecimiento de Corrosión")
     
     tasa_corrosion = st.number_input("Tasa de Crecimiento Anual - (mpy / mils por año)", 1.0, 50.0, 10.0, 0.5)
-    tasa_in = tasa_corrosion / 1000.0  # convertir a pulgadas por año
+    tasa_in = tasa_corrosion / 1000.0
     
     años_proyeccion = st.slider("Años a proyectar", 1, 30, 10)
     
@@ -271,7 +286,6 @@ with tab_rla:
     
     st.plotly_chart(fig_rla, use_container_width=True)
     
-    # Estimación del año de falla
     ano_falla = next((i for i, p in enumerate(p_admisibles) if p < P_diseno), None)
     if ano_falla:
         st.warning(f"⚠️ Alerta: El defecto superará la capacidad segura en aprox. **{ano_falla} años**.")
